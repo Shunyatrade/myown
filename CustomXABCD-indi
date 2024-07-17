@@ -1,0 +1,1072 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © reees
+//@version=5
+
+indicator("Custom XABCD Validation and Backtesting Tool","CustomXABCD",overlay=true,max_lines_count=500,max_labels_count=500,max_bars_back=500)
+
+import reees/TA/66 as t
+import reees/Draw/22 as draw
+import reees/Utilities/2 as u
+
+//-----------------------------------------
+// inputs and vars
+//-----------------------------------------
+
+// Pattern Type Inputs
+var i_bullOn = input.bool(true, "Bullish", inline="type_b", group="Types")
+var i_bearOn = input.bool(true, "Bearish", inline="type_b", group="Types")
+var i_incOn = input.bool(true, "Potential/Incomplete", inline="type_b", group="Types")
+var i_pOn = input.bool(true, "Pattern 1", group="Types", inline="type_b2")
+var i_pOn2 = input.bool(true, "Pattern 2", group="Types", inline="type_b2")
+var i_pOn3 = input.bool(true, "Pattern 3", group="Types", inline="type_b2", tooltip="Define retracement values and targets for up to 3 custom patterns.\n\nTips:\n\n
+     (1)  Assign a unique Pattern ID to each pattern, used for identification on the pattern label and in the results table.\n\n
+     (2)  Enter '0' if you don't want a retracement value defined for a given leg/ratio. The only requirement is that you have a value defined for at least one of the 3 CD retracements.\n\n
+     (3)  Adjust a pattern's entry/stop/target configuration and see how it affects the pattern's results.\n\n
+     (4)  Adjust the weights of pattern score components (% error, PRZ confluence, Point D/PRZ confluence), along with the entry minimum score requirements ('If score is above'), and see how it affects the patterns' results.")
+//
+var i_pid = input.string("🐪","Pat ID", group="Types", inline="pid")
+var i_xab = input.float(0.618, "AB/XA", minval=0, group="Types", inline="xab")
+var i_abc = input.float(0.886, "BC/AB", minval=0, group="Types", inline="abc")
+var i_bcd = input.float(1.618, "CD/BC", minval=0, group="Types", inline="bcd")
+var i_xad = input.float(0.786, "AD/XA", minval=0, group="Types", inline="xad")
+var i_xcd = input.float(0.0, "CD/XC", minval=0, group="Types", inline="xcd")
+var i_t1 = input.string(".618 AD", "Target 1", group="Types", inline="t1", options=[".382 AD",".5 AD",".618 AD",".382 XA",".5 XA",".618 XA","1.272 XA","1.618 XA",".382 CD",".5 CD",".618 CD","1.272 CD","1.618 CD","A","B","C"])
+var i_t2 = input.string("1.272 AD", "Target 2",  group="Types", inline="t2", options=[".618 AD","1.272 AD","1.618 AD",".618 XA","1.272 XA","1.618 XA",".618 CD","1.272 CD","1.618 CD","A","B","C"])
+var i_pid2 = input.string("🦄","", group="Types", inline="pid")
+var i_xab2 = input.float(0.618, "", minval=0, group="Types", inline="xab")
+var i_abc2 = input.float(1.414, "", minval=0, group="Types", inline="abc")
+var i_bcd2 = input.float(0.0, "", minval=0, group="Types", inline="bcd")
+var i_xad2 = input.float(0.0, "", minval=0, group="Types", inline="xad")
+var i_xcd2 = input.float(0.786, "", minval=0, group="Types", inline="xcd")
+var i_t12 = input.string(".618 AD", "", group="Types", inline="t1", options=[".382 AD",".5 AD",".618 AD",".382 XA",".5 XA",".618 XA","1.272 XA","1.618 XA",".382 CD",".5 CD",".618 CD","1.272 CD","1.618 CD","A","B","C"])
+var i_t22 = input.string("1.272 AD", "",  group="Types", inline="t2", options=[".618 AD","1.272 AD","1.618 AD",".618 XA","1.272 XA","1.618 XA",".618 CD","1.272 CD","1.618 CD","A","B","C"])
+var i_pid3 = input.string("🐉","", group="Types", inline="pid")
+var i_xab3 = input.float(0.786, "", minval=0, group="Types", inline="xab")
+var i_abc3 = input.float(1.0, "", minval=0, group="Types", inline="abc")
+var i_bcd3 = input.float(2.0, "", minval=0, group="Types", inline="bcd")
+var i_xad3 = input.float(1.618, "", minval=0, group="Types", inline="xad")
+var i_xcd3 = input.float(0.0, "", minval=0, group="Types", inline="xcd")
+var i_t13 = input.string(".618 AD", "", group="Types", inline="t1", options=[".382 AD",".5 AD",".618 AD",".382 XA",".5 XA",".618 XA","1.272 XA","1.618 XA",".382 CD",".5 CD",".618 CD","1.272 CD","1.618 CD","A","B","C"])
+var i_t23 = input.string("1.272 AD", "",  group="Types", inline="t2", options=[".618 AD","1.272 AD","1.618 AD",".618 XA","1.272 XA","1.618 XA",".618 CD","1.272 CD","1.618 CD","A","B","C"])
+
+// Entry/Stop Inputs
+var e_afterC = input.bool(true,"Enter after Point C",group="Entry/Stop")
+var e_lvlc = input.string("Nearest confluent PRZ level"," ==> Enter at",options=["Nearest confluent PRZ level","Farthest confluent PRZ level","Between the two confluent PRZ levels","Nearest PRZ level","Farthest PRZ level"],group="Entry/Stop")
+var e_aboveC = input.float(90," ==> If score is above",group="Entry/Stop",tooltip="A trade will only be entered if the pattern's score is above the specified value. Note that when entering a trade after Point C, we have an incomplete score because we can't yet measure Point D's confluence with the PRZ. Therefore the final pattern score may differ from the incomplete score at the time of entry. Set this to 0 if you wish to enter a trade on every pattern.")
+var e_afterD = input.bool(true,"Enter after Point D",group="Entry/Stop")
+var e_lvldPct = input.float(1.0," ==> Enter at limit % away from D",minval=0.0,step=.1,group="Entry/Stop",tooltip="Enter the trade after a valid point D has been confirmed, up to the limit of this % away from Point D. E.g. for a bullish pattern (long entry), if this value is set to 5%, an entry will be placed at the best possible price up to 5% above point D. If 'Entry after Point C' is also set, the entry will be at whichever level is reached first. \n\nIf the entry level is not reached, the pattern will not be included in the Success Rate and Return % statistics.")
+var e_aboveD = input.float(90," ==> If score is above",group="Entry/Stop",tooltip="A trade will only be entered if the pattern's score is above the specified value. Set this to 0 if you wish to enter a trade on every pattern.")
+var e_tLimit = input.float(.5," ==> Entry window (time limit)",group="Entry/Stop",tooltip="Time limit for order entry, specified in pattern lengths (e.g. '0.5' means half the total pattern length). If the time limit expires before the order is filled, it will be cancelled and no trade will be entered for the pattern.")
+var stopPct = input.float(75,"Stop",step=1.0,minval=0.0,group="Entry/Stop",inline="stop")
+var stopB = input.string("% of distance to target 1, beyond entry","",options=["% beyond X or D","% beyond Farthest PRZ level","% beyond Point D","% beyond entry","% of distance to target 1, beyond entry"],group="Entry/Stop",inline="stop",tooltip="Set stop-loss % beyond the specified level. If price reaches this level before the first target is hit, or before the target timeout period expires, the pattern will be considered a failure.\n\n'% beyond X or D' = percentage below Point X or Point D, whichever is farther from entry\n\n'% of distance to target 1' = a percentage of the distance from the entry level to target 1. \n\n'% beyond entry' = percentage above/below the entry level. \n\n'% beyond Point D' = percentage above/below Point D. \n\n'beyond Farthest PRZ level' = percentage above/below the Farthest PRZ level")
+// Pattern Inputs
+var t_b = input.int(1,"Pattern validation length (# trailing bars)",minval=1,group="Pattern",tooltip="The number of bars after pivot point D (or point C for incomplete patterns) before a pattern is considered valid. This affects how soon patterns will be drawn and entries can be placed.")
+var pctErr = input.float(15.0,"Allowed ratio error %",step=1.0,minval=0.0,maxval=50.0,group="Pattern",inline="err")
+var pctAsym = input.float(250.0,"Allowed leg length asymmetry %",step=1.0,minval=0.0,maxval=1000.0,group="Pattern")
+var w_e = input.float(4.0,"Weight",step=.1,minval=0.0,group="Pattern",inline="err",tooltip="A leg is considered valid if its retracement (ΔY) ratio is within this % of the harmonic ratio. Weight determines the weight of retracement % error in the total score calculation for a pattern.")
+var tLimitMult = input.float(3,"Pattern time limit",group="Pattern",step=.1,minval=.1,tooltip="Time limit for a completed pattern to reach the projected targets. Value is specified in terms of total pattern length (point X to point D), i.e. a value of 1 will allow one pattern length to elapse before the pattern times out and can no longer be considered successful. Patterns that time out will not count towards the success rates in the results table.")
+var w_p = input.float(2.0,"Weight of PRZ level confluence",step=.1,minval=0.0,group="Pattern",tooltip="Weight applied to Potential Reversal Zone fib level confluence in the total score calculation for a pattern. The closer together the two closest PRZ fib levels are, the higher the score.")
+var w_d = input.float(3.0,"Weight of point D / PRZ level confluence",step=.1,minval=0.0,group="Pattern",tooltip="Weight applied to the confluence of point D with the Potential Reversal Zone levels in the total score calculation for a pattern. The closer point D is to either of the two confluent PRZ fib levels, the higher the score. ")
+
+// Alert Inputs
+var a_on = input.bool(true, "Alert", inline="alert", group="Alerts")
+var a_type = input.string("Both", "for", options=["Potential patterns","Complete patterns","Both"], inline="alert", group="Alerts")
+
+// Display Inputs
+var c_bline = input.color(color.new(color.green,20), "Bullish lines", group="Display")
+var c_beline = input.color(color.new(color.red,20), "Bearish lines", group="Display")
+var c_blab = input.color(color.new(color.green,75), "Bullish labels", group="Display")
+var c_belab = input.color(color.new(color.red,75), "Bearish labels", group="Display")
+var l_txt = input.color(color.new(color.white,20), "Label text", group="Display")
+var i_tbl = input.bool(true,"",group="Display",inline="tbl")
+var i_tblLoc = input.string("Bottom left","Results table location",group="Display",inline="tbl",options=["Top left","Top center","Top right","Middle left","Middle center","Middle right","Bottom left","Bottom center","Bottom right"])
+
+// Completed pattern structures
+var string[] pat = array.new_string(0)
+var int[] pTypes = array.new_int(0)
+if barstate.isfirst     // initialize selected patterns
+    if i_pOn
+        array.push(pTypes,1)
+        array.push(pat,"a1")
+        array.push(pat,"b1")
+    if i_pOn2
+        array.push(pTypes,2)
+        array.push(pat,"a2")
+        array.push(pat,"b2")
+    if i_pOn3
+        array.push(pTypes,3)
+        array.push(pat,"a3")
+        array.push(pat,"b3")
+var bull1 = matrix.new<string>(0)
+var bull2 = matrix.new<string>(0)
+var bull3 = matrix.new<string>(0)
+var bear1 = matrix.new<string>(0)
+var bear2 = matrix.new<string>(0)
+var bear3 = matrix.new<string>(0)
+// Corresponding drawing structures (1:1 map)
+var label[] bull1L = array.new_label(0)
+var label[] bull2L = array.new_label(0)
+var label[] bull3L = array.new_label(0)
+var label[] bear1L = array.new_label(0)
+var label[] bear2L = array.new_label(0)
+var label[] bear3L = array.new_label(0)
+var bull1Ln = matrix.new<line>(0)
+var bull2Ln = matrix.new<line>(0)
+var bull3Ln = matrix.new<line>(0)
+var bear1Ln = matrix.new<line>(0)
+var bear2Ln = matrix.new<line>(0)
+var bear3Ln = matrix.new<line>(0)
+
+// temp/last pattern structures
+var pending = matrix.new<string>(0)
+var label[] fullIpL = array.new_label(0)
+var line[] fullIpLn = array.new_line(0)
+var linefill[] fullIpLf = array.new_linefill(0)
+
+// Incomplete pattern arrays
+var inc = matrix.new<string>(0)
+var label[] incL = array.new_label(0)
+var incLn = matrix.new<line>(0)
+
+// Stat totals
+var int[] pTot = array.new_int(0)
+var int[] tTot = array.new_int(0)
+var float[] t1Tot = array.new_float(0)
+var float[] t2Tot = array.new_float(0)
+var float[] arTot = array.new_float(0)
+var float[] trTot = array.new_float(0)
+
+//-----------------------------------------
+// functions
+//-----------------------------------------
+
+nToMatrix(n) =>
+    switch n
+        "a1" => bull1
+        "a2" => bull2
+        "a3" => bull3
+        "b1" => bear1
+        "b2" => bear2
+        "b3" => bear3
+
+nToArrayL(n) =>
+    switch n
+        "a1" => bull1L
+        "a2" => bull2L
+        "a3" => bull3L
+        "b1" => bear1L
+        "b2" => bear2L
+        "b3" => bear3L
+
+typeToMatrix(t,tp) =>
+    n = (t ? "a" : "b") + str.tostring(tp)
+    nToMatrix(n)
+
+typeToArrayL(t,tp) =>
+    n = (t ? "a" : "b") + str.tostring(tp)
+    nToArrayL(n)
+
+nToMatrixLn(n) =>
+    switch n
+        "a1" => bull1Ln
+        "a2" => bull2Ln
+        "a3" => bull3Ln
+        "b1" => bear1Ln
+        "b2" => bear2Ln
+        "b3" => bear3Ln
+
+typeToMatrixLn(t,tp) =>
+    n = (t ? "a" : "b") + str.tostring(tp)
+    nToMatrixLn(n)
+
+id(tp) =>
+    switch tp
+        1 => i_pid
+        2 => i_pid2
+        3 => i_pid3
+
+xab(tp) =>
+    v = switch tp
+        1 => i_xab
+        2 => i_xab2
+        3 => i_xab3
+    v == 0 ? na : v
+
+abc(tp) =>
+    v = switch tp
+        1 => i_abc
+        2 => i_abc2
+        3 => i_abc3
+    v == 0 ? na : v
+
+bcd(tp) =>
+    v = switch tp
+        1 => i_bcd
+        2 => i_bcd2
+        3 => i_bcd3
+    v == 0 ? na : v
+
+xad(tp) =>
+    v = switch tp
+        1 => i_xad
+        2 => i_xad2
+        3 => i_xad3
+    v == 0 ? na : v
+
+xcd(tp) =>
+    v = switch tp
+        1 => i_xcd
+        2 => i_xcd2
+        3 => i_xcd3
+    v == 0 ? na : v
+
+t1(tp) =>
+    switch tp
+        1 => i_t1
+        2 => i_t12
+        3 => i_t13
+
+t2(tp) =>
+    switch tp
+        1 => i_t2
+        2 => i_t22
+        3 => i_t23
+
+// get target
+harmonic_xabcd_targets(tp,xY,aY,bY,cY,dY) =>
+    tgt1 = t1(tp)
+    tgt2 = t2(tp)
+    [t1,t2,_] = t.harmonic_xabcd_targets(xY,aY,bY,cY,dY,tgt1,tgt2)
+    [t1,t2]
+
+// Timeout period
+tLimit(xX,dX) =>
+    int((dX - xX)*tLimitMult)
+
+incTLimit(xX,cX) =>
+    avg = (cX-xX)/3
+    int(avg * (1 + pctAsym/100))    // time out after max possible bars based on asymmetry parameter
+
+// Entry has timed out
+eTimeout(xX,dX) =>
+    bar_index - dX > int((dX - xX)*e_tLimit)
+
+// Pattern still active within timeout period
+stillActive(xX,dX) =>
+    bar_index - tLimit(xX,dX) <= dX and eTimeout(xX,dX) == false
+
+// Get/Set functions (can map array indices in the future if necessary)
+//     0 1  2  3  4  5  6  7  8  9  10 11  12  13   14   15   16  17   18   19   20 21  22
+//    [t,tp,xX,xY,aX,aY,bX,bY,cX,cY,dX,dY,xadl,bcdl,xcdl,prz,eD,t1Hit,t2Hit,eHit,eX,eY,score]
+
+setEntry(s,eH,eX,eY) =>
+    a = s
+    seH = if na(eH)
+        "na"
+    else if eH
+        "1"
+    else
+        "0"
+    seX = na(eX) ? "na" : str.tostring(eX)
+    seY = na(eY) ? "na" : str.tostring(eY)
+    array.set(a,19,seH)
+    array.set(a,20,seX)
+    array.set(a,21,seY)
+    a
+
+getScore(s) =>
+    str.tonumber(array.get(s,22))
+
+//----------------------------
+
+// make sure score is high enough to enter a trade
+noEntry(d,string[] s=na,float score=na) =>
+    sc = not na(score) ? score : getScore(s)
+    d ? sc < (e_aboveD/100) : sc < (e_aboveC/100)
+
+entry(t,tp,xY,aY,bY,cY,float dY=na,score) =>
+    if noEntry(not na(dY),score=score)
+        [na,na,na]
+    else
+        [xadl,bcdl,xcdl] = t.pat_xabcd_prz(xY,aY,bY,cY,xad(tp),bcd(tp),xcd(tp))
+        [lPrz,hPrz] = t.harmonic_xabcd_przClosest(xadl,bcdl,xcdl)
+        [u,l] = t.harmonic_xabcd_przRange(xadl,bcdl,xcdl)
+        float afterD = na
+        float afterC = na
+        if e_afterD
+            afterD := if na(dY)
+                na
+            else
+                t ? dY * (1 + e_lvldPct/100) : dY * (1 - e_lvldPct/100)
+        if e_afterC
+            afterC := switch e_lvlc
+                "Nearest confluent PRZ level" => t ? hPrz : lPrz
+                "Farthest confluent PRZ level" => t ? lPrz : hPrz
+                "Nearest PRZ level" => t ? u : l
+                "Farthest PRZ level" => t ? l : u
+                => hPrz - ((hPrz-lPrz)/2)
+        // if we have a value for both entry params, use the closest one
+        lvl = if not na(afterD) and not na(afterC)
+            t ? math.max(afterD,afterC) : math.min(afterD,afterC)
+        else if not na(afterD)
+            afterD
+        else
+            afterC
+        // [nearest lvl, after C lvl, after D lvl]
+        [lvl,afterC,afterD]
+
+// Determine if entry level was reached. Assumes pattern is active/not timed out.
+entryHit(t,tp,xX,cX,xY,aY,bY,cY,int dX=na,float dY=na,float score=na) =>
+    [_,afterC,afterD] = entry(t,tp,xY,aY,bY,cY,dY,score)
+    t.xabcd_entryHit(t, afterC, afterD, dX, e_afterC, e_afterD, t_b)
+    // returns [flag,bar,eLvl]
+
+// Determine if pattern has succeeded or failed, or neither (na)
+success(t,tp,xX,xY,aX,aY,bX,bY,cX,cY,dX,dY,xadl,bcdl,xcdl,t1Hit,t2Hit,eHit,eX,eY) =>
+    // if within time limit and trade active / entry hit, check targets/stop
+    if (bar_index - dX) <= (bar_index - tLimit(xX,dX) + 1) and eHit
+        [t1,t2] = harmonic_xabcd_targets(tp,xY,aY,bY,cY,dY)
+        [upper,lower] = t.harmonic_xabcd_przRange(xadl,bcdl,xcdl)
+        stop = t.harmonic_xabcd_stop(stopB,stopPct,t,xY,dY,upper,lower,t1,eY)
+        t.tradeClosed(eX,stop,t1Hit,t2Hit,t1,t2)
+    // else nothing to update
+    else
+        [na,na,na,na,na,na]
+
+rAndE(float l, float l1, float l2) =>
+    float r = na
+    float e = na
+    if l!=0
+        r := math.abs(l1)/math.abs(l2)
+        e := math.abs(1-(r/l))
+    [r,e]
+
+scores(tp, xX, xY, aX, aY, bX, bY, cX, cY, int dX=na, float dY=na) =>
+    [_,xbre] = rAndE(xab(tp),aY-bY,aY-xY)
+    [_,acre] = rAndE(abc(tp),cY-bY,aY-bY)
+    [_,bdre] = rAndE(bcd(tp),cY-dY,cY-bY)
+    [_,xadre] = rAndE(xad(tp),aY-dY,aY-xY)
+    [_,xcdre] = rAndE(xcd(tp),cY-dY,cY-xY)
+    [xadl,bcdl,xcdl] = t.pat_xabcd_prz(xY,aY,bY,cY,xad(tp),bcd(tp),xcd(tp))
+    [przscore,cpl1,cpl2] = t.harmonic_xabcd_przScore(xY,aY,xadl,bcdl,xcdl)
+    a = array.from(xad(tp),bcd(tp),xcd(tp))
+    n = 0
+    for i in a
+        if not na(i)
+            n+=1
+    eavg = t.harmonic_xabcd_eAvg(xbre,acre,bdre,xadre,xcdre)
+    eD = t.harmonic_xabcd_eD(cpl1,cpl2,xY,aY,dY)
+    [eavg,eD,n>1?przscore:na,cpl1,cpl2]
+
+scoreTot(float eavg, float przscore, float eD, float w_e, float w_p, float w_d)=>
+    float pscore = na(przscore) ? 0.0 : przscore
+    float pw = na(przscore) ? 0.0 : w_p
+
+    if not na(eD)
+        ((1-eavg)*w_e + pscore*pw + (1-eD)*w_d)/(w_e+pw+w_d)
+    else    // else incomplete pattern score
+        ((1-eavg)*w_e + pscore*pw)/(w_e+pw)
+
+// stringify pattern values for pseudo multi-dimensional array value (workaround for data structure limitations)
+//     0 1  2  3  4  5  6  7  8  9  10 11  12  13   14   15   16  17   18   19   20 21  22
+//    [t,tp,xX,xY,aX,aY,bX,bY,cX,cY,dX,dY,xadl,bcdl,xcdl,prz,eD,t1Hit,t2Hit,eHit,eX,eY,score]
+stringify(t,tp,xX,xY,aX,aY,bX,bY,cX,cY,int dX=na,float dY=na,bool t1Hit=na,bool t2Hit=na,bool eHit=na,int eX=na,float eY=na) =>
+    string[] a = array.new_string(0)
+    array.push(a,t?"1":"0")
+    array.push(a,str.tostring(tp))
+    array.push(a,str.tostring(xX))
+    array.push(a,str.tostring(xY))
+    array.push(a,str.tostring(aX))
+    array.push(a,str.tostring(aY))
+    array.push(a,str.tostring(bX))
+    array.push(a,str.tostring(bY))
+    array.push(a,str.tostring(cX))
+    array.push(a,str.tostring(cY))
+    array.push(a,str.tostring(dX))
+    array.push(a,str.tostring(dY))
+    [eavg,eD,przscore,cpl1,cpl2] = scores(tp,xX,xY,aX,aY,bX,bY,cX,cY,dX,dY)
+    [xadl,bcdl,xcdl] = t.pat_xabcd_prz(xY,aY,bY,cY,xad(tp),bcd(tp),xcd(tp))
+    array.push(a,str.tostring(xadl))
+    array.push(a,str.tostring(bcdl))
+    array.push(a,str.tostring(xcdl))
+    array.push(a,str.tostring(przscore))
+    array.push(a,str.tostring(eD))
+    t1HitS = if na(t1Hit)
+        "na"
+    else if t1Hit
+        "1"
+    else
+        "0"
+    t2HitS = if na(t2Hit)
+        "na"
+    else if t2Hit
+        "1"
+    else
+        "0"
+    array.push(a,t1HitS)
+    array.push(a,t2HitS)
+    //
+    eH = if na(eHit)
+        "na"
+    else if eHit
+        "1"
+    else
+        "0"
+    eHx = na(eX) ? "na" : str.tostring(eX)
+    eHy = na(eY) ? "na" : str.tostring(eY)
+    array.push(a,eH)
+    array.push(a,eHx)
+    array.push(a,eHy)
+    array.push(a,str.tostring(scoreTot(eavg,przscore,eD,w_e,w_p,w_d)))
+    a
+
+// get pattern values from pseudo multi-dimensional array value (workaround for data structure limitations)
+//     0 1  2  3  4  5  6  7  8  9  10 11  12  13   14   15  16  17    18   19   20 21  22
+//    [t,tp,xX,xY,aX,aY,bX,bY,cX,cY,dX,dY,xadl,bcdl,xcdl,prz,eD,t1Hit,t2Hit,eHit,eX,eY,score]
+unstringify(v) =>
+    t1Hit = if array.get(v,17) == "na"
+        na
+    else if array.get(v,17) == "1"
+        true
+    else
+        false
+    t2Hit = if array.get(v,18) == "na"
+        na
+    else if array.get(v,18) == "1"
+        true
+    else
+        false
+    eHit = if array.get(v,19) == "na"
+        na
+    else if array.get(v,19) == "1"
+        true
+    else
+        false
+    [
+     array.get(v,0) == "1" ? true : false,
+     int(str.tonumber(array.get(v,1))),
+     int(str.tonumber(array.get(v,2))),
+     str.tonumber(array.get(v,3)),
+     int(str.tonumber(array.get(v,4))),
+     str.tonumber(array.get(v,5)),
+     int(str.tonumber(array.get(v,6))),
+     str.tonumber(array.get(v,7)),
+     int(str.tonumber(array.get(v,8))),
+     str.tonumber(array.get(v,9)),
+     int(str.tonumber(array.get(v,10))),
+     str.tonumber(array.get(v,11)),
+     array.get(v,12)=="NaN" ? na : str.tonumber(array.get(v,12)),
+     array.get(v,13)=="NaN" ? na : str.tonumber(array.get(v,13)),
+     array.get(v,14)=="NaN" ? na : str.tonumber(array.get(v,14)),
+     str.tonumber(array.get(v,15)),
+     str.tonumber(array.get(v,16)),
+     t1Hit,
+     t2Hit,
+     eHit,
+     array.get(v,20) == "na" ? na : int(str.tonumber(array.get(v,20))),
+     array.get(v,21) == "na" ? na : str.tonumber(array.get(v,21)),
+     str.tonumber(array.get(v,22))
+     ]
+
+name(bull,tp) =>
+    t = bull ? "Bullish " : "Bearish "
+    t + id(tp)
+
+alertMsg(t,tp,inc=false) =>
+    if inc
+        "Potential " + name(t,tp) + " is forming."
+    else
+        name(t,tp) + " has formed."
+
+pid(tp,xX,aX,bX,cX,int dX=na) =>
+    // TODO: convert PID to array (faster than string concat)
+    str.tostring(tp) + "_"
+     + str.tostring(xX) + "_"
+     + str.tostring(aX) + "_"
+     + str.tostring(bX) + "_"
+     + str.tostring(cX) + "_"
+     + str.tostring(dX)
+
+pidFromStr(s) =>
+    [_,tp,xX,_,aX,_,bX,_,cX,_,dX,_,_,_,_,_,_,_,_,_,_,_,_] = unstringify(s)
+    pid(tp,xX,aX,bX,cX,dX)
+
+deleteFip() =>
+    for lbl in fullIpL
+        label.delete(lbl)
+    array.clear(fullIpL)
+    //
+    for ln in fullIpLn
+        line.delete(ln)
+    array.clear(fullIpLn)
+    //
+    for lf in fullIpLf
+        linefill.delete(lf)
+    array.clear(fullIpLf)
+
+removePending(pid) =>
+    if matrix.rows(pending) > 0
+        for i=0 to matrix.rows(pending)-1
+            if pidFromStr(matrix.row(pending,i)) == pid
+                if i == matrix.rows(pending)-1
+                    deleteFip()
+                matrix.remove_row(pending,i)
+                break
+
+removeCompleted(pid,t,tp) =>
+    string[] rPending = array.new_string(0)
+    int[] rCompleted = array.new_int(0)
+    a = typeToMatrix(t,tp)
+    aL = typeToArrayL(t,tp)
+    mLn = typeToMatrixLn(t,tp)
+    n = matrix.rows(a)-1
+    if matrix.rows(a) >= 0
+        for i = 0 to matrix.rows(a)-1
+            s = matrix.row(a,n-i)
+            if pidFromStr(s) == pid
+                // Remove from data structures and delete drawings
+                // index should be same for all 1:1 mapped structures
+                array.push(rPending,pid)
+                array.push(rCompleted,n-i)
+                label.delete(array.remove(aL,n-i))
+                lines = matrix.remove_row(mLn,n-i)
+                for l in lines
+                    line.delete(l)
+                break
+        for i in rCompleted
+            matrix.remove_row(a,i)
+        for p in rPending
+            removePending(p)
+
+successTxt(t1Hit,t2Hit,eHit,xX,dX,score) =>
+    if t2Hit
+        " (Success - Target 1, Target 2)"
+    else if t1Hit
+        " (Success - Target 1)"
+    else if t1Hit==false
+        " (Failed)"
+    else if eHit==false and stillActive(xX,dX) == false
+        " (No entry)"
+    else if noEntry(not na(dX),score=score) and stillActive(xX,dX)
+        " (No entry)"
+    else if na(eHit) and stillActive(xX,dX)
+        " (Entry pending)"
+    else if na(t1Hit) and stillActive(xX,dX)
+        " (Targets pending)"
+    else
+        " (Timed out)"
+
+ratDispTxt(tp) =>
+    [na(xab(tp)) ? "NA" : str.tostring(xab(tp)),
+     na(abc(tp)) ? "NA" : str.tostring(abc(tp)),
+     na(bcd(tp)) ? "NA" : str.tostring(bcd(tp)),
+     na(xad(tp)) ? "NA" : str.tostring(xad(tp)),
+     na(xcd(tp)) ? "NA" : str.tostring(xcd(tp))]
+
+// Pattern tooltip
+ttTxt(bull,tp,xX,xY,aX,aY,bX,bY,cX,cY,dX,dY,bool t1Hit=na,bool t2Hit=na,eHit,score) =>
+    [t1,t2] = harmonic_xabcd_targets(tp,xY,aY,bY,cY,dY)
+    [rb,rc,rd1,rd2,rd3] = ratDispTxt(tp)
+    [xbr,xbre] = rAndE(xab(tp),aY-bY,aY-xY)
+    [acr,acre] = rAndE(abc(tp),cY-bY,aY-bY)
+    [bdr,bdre] = rAndE(bcd(tp),cY-dY,cY-bY)
+    [xadr,xadre] = rAndE(xad(tp),aY-dY,aY-xY)
+    [xcdr,xcdre] = rAndE(xcd(tp),cY-dY,cY-xY)
+    [eavg,eD,przscore,cpl1,cpl2] = scores(tp,xX,xY,aX,aY,bX,bY,cX,cY,dX,dY)
+    l1 = name(bull,tp) + successTxt(t1Hit,t2Hit,eHit,xX,dX,score) + "\n\n"
+    l2 = "Total Score:  " + str.tostring(score*100,"#.###") + "%\n"
+    l3 = "   Leg retracement accuracy:  " + str.tostring((1-eavg)*100, "#.##") + "%\n"
+    l42 = "   PRZ level confluence:  " + (na(przscore)?"NA":(str.tostring(przscore*100, "#.##") + "%")) + "\n"
+    l43 = "   Point D confluence with PRZ:  " + str.tostring((1-eD)*100, "#.##") + "%\n"
+    l5 = "\n              Actual     % Err       Theoretical\n"
+    l6 = "AB/XA     " + str.tostring(xbr, "0.000") + "      " + str.tostring(xbre*100, "00.0") + "%" + "      " + rb + "\n"
+    l7 = "BC/AB     " + str.tostring(acr, "0.000") + "      " + str.tostring(acre*100, "00.0") + "%      " + rc + "\n"
+    l8 = "CD/BC     " + str.tostring(bdr, "0.000") + "      " + str.tostring(bdre*100, "00.0") + "%" +"      " + rd1 + "\n"
+    l9 = "AD/XA     " + str.tostring(xadr, "0.000") + "      " + str.tostring(xadre*100, "00.0") + "%      " + rd2 + "\n"
+    l10 = "CD/XC     " + str.tostring(xcdr, "0.000") + "      " + str.tostring(xcdre*100, "00.0") + "%      " + rd3 + "\n"
+    l1 + l2 + l3 + l42 + l43 + l5 + (na(xbr) ? "": l6) + (na(acr) ? "" : l7) + (na(bdr) ? "" :  l8) + (na(xadr) ? "" : l9) + (na(xcdr) ? "" : l10)
+
+// incomplete pattern tooltip
+incTtTxt(bull,tp,xX,xY,aX,aY,bX,bY,cX,cY,xadl,bcdl,xcdl,score,e) =>
+    [rb,rc,rd1,rd2,rd3] = ratDispTxt(tp)
+    [xbr,xbre] = rAndE(xab(tp),aY-bY,aY-xY)
+    [acr,acre] = rAndE(abc(tp),cY-bY,aY-bY)
+    [eavg,eD,przscore,cpl1,cpl2] = scores(tp,xX,xY,aX,aY,bX,bY,cX,cY)
+    l1 = "Potential " + name(bull,tp) + " (" + str.tostring(score*100,"#.##") + "%)\n\n"
+    l2 = "    Potential Reversal Zone:\n"
+    l21 = "     Entry:  " + str.tostring(e,"#.#####") + "\n"
+    l211 = "        BC retracement (" + rd1 + "):  " + str.tostring(bcdl, "#.#####") + "\n"
+    l41 = "        XA retracement (" + rd2 + "):  "+ str.tostring(xadl, "#.#####") + "\n"
+    l42 = "        XC retracement (" + rd3 + "):  "+ str.tostring(xcdl, "#.#####") + "\n"
+    l5 = "\n              Actual     % Err       Theoretical\n"
+    l6 = "AB/XA     " + str.tostring(xbr, "0.000") + "      " + str.tostring(xbre*100, "00.0") + "%" + "      " + rb + "\n"
+    l7 = "BC/AB     " + str.tostring(acr, "0.000") + "      " + str.tostring(acre*100, "00.0") + "%      " + rc + "\n"
+    l8 = "CD/BC      " + "TBD " + "         -          " + rd2 + "\n"
+    l9 = "AD/XA      " + "TBD " + "         -          " + rd1 + "\n"
+    l10 = "CD/XC      " + "TBD " + "         -          " + rd3 + "\n"
+    l1 + l2 + (na(e)?"":l21) + (na(bcdl)?"":l211)  + (na(xadl)?"":l41) + (na(xcdl)?"":l42) + l5 + l6 + l7 + l8 + l9 + l10
+
+status(xX,dX,bool t1Hit=na,bool t2Hit=na,eHit,score) =>
+    if t2Hit
+        " ✅✅"
+    else if t1Hit
+        " ✅"
+    else if t1Hit==false
+        " ❌"
+    else if stillActive(xX,dX) == false and eHit == false
+        " ⛔"
+    else if stillActive(xX,dX) and noEntry(not na(dX),score=score)
+        " ⛔"
+    else if stillActive(xX,dX)
+        " ⏳"
+    else
+        " 🕝"
+
+lbTxt(t,tp,score,status) =>
+    id(tp) + " " + str.tostring(math.round(score,3)*100) + "%" + status
+
+incLbTxt(t,tp,score) =>
+    "Potential " + name(t,tp) + " (" + str.tostring(score*100,"#.##") + "%)"
+
+deleteInc(string pid) =>
+    n = matrix.rows(inc)
+    if not na(pid) and n > 0
+        for j=0 to n-1
+            if pid == pidFromStr(matrix.row(inc,j))
+                matrix.remove_row(inc,j)
+                label.delete(array.remove(incL,j))
+                for ln in matrix.remove_row(incLn,j)
+                    line.delete(ln)
+                break
+
+drawPattern(t,tp,xX,xY,aX,aY,bX,bY,cX,cY,int dX=na,float dY=na,t1Hit,t2Hit,eHit,score) =>
+    if i_incOn or not na(dX)
+        status = status(xX,dX,t1Hit,t2Hit,eHit,score)
+        lbTxt = not na(dX) ? lbTxt(t,tp,score,status) : incLbTxt(t,tp,score)
+        tt = ttTxt(t,tp,xX,xY,aX,aY,bX,bY,cX,cY,dX,dY,t1Hit,t2Hit,eHit,score)
+        [xadl,bcdl,xcdl] = t.pat_xabcd_prz(xY,aY,bY,cY,xad(tp),bcd(tp),xcd(tp))
+        [lower,higher] = t.harmonic_xabcd_przClosest(xadl,bcdl,xcdl)
+        [_,e,_] = entry(t,tp,xY,aY,bY,cY,score=score)
+        float iE = na(dX) ? (na(e) or e == 0 ? (t?higher:lower) : e) : na
+        [l1,l2,l3,l4,l5,l6] = draw.xabcd(xX,xY,aX,aY,bX,bY,cX,cY,dX,dY,iE,t,c_bline,c_beline)
+        lbcol = t ? c_blab : c_belab
+        lbstyle = t ? label.style_label_up : label.style_label_down
+        incLbstyle = t ? label.style_label_down : label.style_label_up
+        label lbl = na
+        if not na(dX)   // Completed pattern
+            lbl := label.new(dX,dY,text=lbTxt,textcolor=l_txt,size=size.small,style=lbstyle,tooltip=tt,color=lbcol)
+        else    // Incomplete pattern
+            incTt = incTtTxt(t,tp,xX,xY,aX,aY,bX,bY,cX,cY,xadl,bcdl,xcdl,score,e)
+            lbl := not na(l4) ? label.new(line.get_x2(l4),line.get_y2(l4),text=lbTxt,tooltip=incTt,textcolor=l_txt,size=size.small,style=lbstyle,color=lbcol)
+                              : label.new(cX,cY,text=lbTxt,tooltip=incTt,textcolor=l_txt,size=size.small,style=lbstyle,color=lbcol)
+        // return pattern drawings
+        [lbl,l1,l2,l3,l4,l5,l6]
+    else
+        [na,na,na,na,na,na,na]
+
+drawPatternFromStr(s) =>
+    [t,tp,xX,xY,aX,aY,bX,bY,cX,cY,dX,dY,xadl,bcdl,xcdl,prz,eD,t1Hit,t2Hit,eHit,_,_,score] = unstringify(s)
+    // Returns pattern drawings
+    //  [label,line1,line2,line3,line4,line5,line6]
+    drawPattern(t,tp,xX,xY,aX,aY,bX,bY,cX,cY,dX,dY,t1Hit,t2Hit,eHit,score)
+
+addIncompletePattern(t,tp,xX,xY,aX,aY,bX,bY,cX,cY) =>
+    string[] s = na
+    line[] ln = na
+    label lbl = na
+    exists = false
+    // check last pattern. if same XABC, don't add it again.
+    if matrix.rows(inc) > 0
+        for i=0 to matrix.rows(inc)-1
+            last = matrix.row(inc,matrix.rows(inc)-1-i)
+            [lt,ltp,lxX,lxY,laX,laY,lbX,lbY,lcX,lcY,ldX,ldY,_,_,_,_,_,_,_,_,_,_,_] = unstringify(last)
+            if xX==lxX and aX==laX and bX==lbX and cX==lcX and tp==ltp
+                exists := true
+                break
+        if exists == false
+            s := stringify(t,tp,xX,xY,aX,aY,bX,bY,cX,cY)
+            [_,eC,_] = entry(t,tp,xY,aY,bY,cY,score=getScore(s))
+            if not na(eC) and ((t and eC < ta.lowest(bar_index-cX)) or (t==false and eC > ta.highest(bar_index-cX)))
+                matrix.add_row(inc,matrix.rows(inc),s)
+            else
+                s := na
+    else
+        s := stringify(t,tp,xX,xY,aX,aY,bX,bY,cX,cY)
+        [_,eC,_] = entry(t,tp,xY,aY,bY,cY,score=getScore(s))
+        if not na(eC) and ((t and eC < ta.lowest(bar_index-cX)) or (t==false and eC > ta.highest(bar_index-cX)))
+            matrix.add_row(inc,matrix.rows(inc),s)
+        else
+            s := na
+    if not na(s)
+        [lb,l1,l2,l3,l4,l5,l6] = drawPatternFromStr(s)
+        array.push(incL,lb)
+        matrix.add_row(incLn,matrix.rows(incLn),array.from(l1,l2,l3,l4,l5,l6))
+        if a_on and (a_type == "Potential patterns" or a_type == "Both")
+            alert(alertMsg(t,tp,true),alert.freq_once_per_bar_close) // temporarily changing to fire on bar close until real-time bar multiple alert issue is resolved
+
+// Draw completed pattern and update data structures
+addCompleted(t,tp,s) =>
+    m = typeToMatrix(t,tp)
+    aL = typeToArrayL(t,tp)
+    mLn = typeToMatrixLn(t,tp)
+    matrix.add_row(m,matrix.rows(m),s)  // add pattern
+    [lbl,l1,l2,l3,l4,l5,l6] = drawPatternFromStr(s)
+    array.push(aL,lbl)  // addlabel
+    matrix.add_row(mLn,matrix.rows(mLn),array.from(l1,l2,l3,l4,l5,l6))  // add lines
+    if noEntry(true,s)==false
+        matrix.add_row(pending,matrix.rows(pending),s)
+    // fire alert if appropriate
+    if a_on and (a_type == "Complete patterns" or a_type == "Both")
+        alert(alertMsg(t,tp),alert.freq_once_per_bar_close) // temporarily changing to fire on bar close until real-time bar multiple alert issue is resolved
+
+updatePending(pid,str) =>
+    if matrix.rows(pending) > 0
+        for i=0 to matrix.rows(pending)-1
+            if pidFromStr(matrix.row(pending,i)) == pid
+                matrix.remove_row(pending,i)
+                matrix.add_row(pending,i,str)
+                break
+
+updateCompleted(pid,t,tp,str) =>
+    a = typeToMatrix(t,tp)
+    n = matrix.rows(a)-1
+    label l = na
+    if matrix.rows(a) > 0
+        for i = 0 to n
+            s = matrix.row(a,n-i)
+            if pidFromStr(s) == pid
+                updatePending(pid,str)
+                matrix.remove_row(a,n-i)
+                matrix.add_row(a,n-i,str)
+                l := array.get(typeToArrayL(t,tp),n-i)
+                break
+    // return the label so it can be updated, if necessary
+    l
+
+// Add pattern to completed pattern structures
+addValidPattern(t,tp,xX,xY,aX,aY,bX,bY,cX,cY,dX,dY) =>
+    string[] s = na
+    bool lasteH = na
+    int lasteX = na
+    float lasteY = na
+    float lastScore = na
+    m = typeToMatrix(t,tp)
+    if matrix.rows(m) > 0
+        // check last pattern of same type
+        last = matrix.row(m,matrix.rows(m)-1)
+        [lt,ltp,lxX,lxY,laX,laY,lbX,lbY,lcX,lcY,ldX,ldY,_,_,_,_,_,lt1H,lt2H,leH,leX,leY,lscore]
+         = unstringify(last)
+        lastScore := lscore
+        // if A, B or C is different = new pattern
+        if aX!=laX or bX!=lbX or cX!=lcX
+            s := stringify(t,tp,xX,xY,aX,aY,bX,bY,cX,cY,dX,dY)
+            addCompleted(t,tp,s)
+        // if ABC are same but D is beyond last pattern's D, replace it with this one. We want to draw the
+        // new/updated pattern and calculate its updated score, but maintain any entry/targets that have
+        // already been hit.
+        else if (t and dY < ldY) or (t==false and dY > ldY)
+            if leH and na(lt1H)
+                lasteH := true     // inherit entry from last pattern (trade is active)
+                lasteX := leX
+                lasteY := leY
+                s := stringify(t,tp,xX,xY,aX,aY,bX,bY,cX,cY,dX,dY,lt1H,lt2H,leH,leX,leY)
+            else
+                s := stringify(t,tp,xX,xY,aX,aY,bX,bY,cX,cY,dX,dY)
+            //
+            if lastScore > getScore(s)  // if lower score, keep last pattern
+                s := na
+            else if not na(lt1H)        // if last pattern trade closed, just add the new pattern
+                addCompleted(t,tp,s)
+            else                        // else, remove the last pattern in favor of the new one
+                lpid = pid(ltp,lxX,laX,lbX,lcX,ldX)
+                removeCompleted(lpid,t,tp)
+                addCompleted(t,tp,s)
+    else
+        s := stringify(t,tp,xX,xY,aX,aY,bX,bY,cX,cY,dX,dY)
+        addCompleted(t,tp,s)
+
+    // Update newly added pattern
+    if not na(s)
+        // update entry, if necessary
+        if lasteH
+            draw.eHitLbl(lasteX,lasteY,dX,dY,t,true)
+        else
+            score = getScore(s)
+            [eHit,eX,eY] = entryHit(t,tp,xX,cX,xY,aY,bY,cY,dX,dY,score)
+            if eHit
+                draw.eHitLbl(eX,eY,dX,dY,t)
+                pid = pid(tp,xX,aX,bX,cX,dX)
+                s := setEntry(s,eHit,eX,eY)
+                l = updateCompleted(pid,t,tp,s)
+                tt = ttTxt(t,tp,xX,xY,aX,aY,bX,bY,cX,cY,dX,dY,eHit=eHit,score=score)
+                status = status(xX,dX,eHit=eHit,score=score)
+                lbTxt = lbTxt(t,tp,score,status)
+                label.set_text(l,lbTxt)
+                label.set_tooltip(l,tt)
+        ""
+
+// Get the most recent pending pattern
+lastPending() =>
+    n = matrix.rows(pending)
+    if n > 0
+        unstringify(matrix.row(pending,n-1))
+
+updatePendingPatterns() =>
+    string[] remove = array.new_string(0)
+    if matrix.rows(pending) > 0
+        for i=0 to matrix.rows(pending)-1
+            [t,tp,xX,xY,aX,aY,bX,bY,cX,cY,dX,dY,xadl,bcdl,xcdl,prz,eD,t1Hit,t2Hit,eHit,eX,eY,score]
+             = unstringify(matrix.row(pending,i))
+            pid = pid(tp,xX,aX,bX,cX,dX)
+            [eH,eHx,eHy] = entryHit(t,tp,xX,cX,xY,aY,bY,cY,dX,dY,score)
+            ehVal = eHit ? eHit : (eTimeout(xX,dX)?false:eH)
+            exVal = eHit ? eX : (eTimeout(xX,dX)?na:eHx)
+            eyVal = eHit ? eY : (eTimeout(xX,dX)?na:eHy)
+            tLimit = tLimit(xX,dX)
+            expired = bar_index == (dX + tLimit + 1) or (eTimeout(xX,dX) and (na(ehVal) or ehVal==false))
+            [t1h,t2h,t1x,t1y,t2x,t2y] = success(t,tp,xX,xY,aX,aY,bX,bY,cX,cY,dX,dY,xadl,bcdl,xcdl,t1Hit,t2Hit,ehVal,exVal,eyVal)
+            s = stringify(t,tp,xX,xY,aX,aY,bX,bY,cX,cY,dX,dY,t1h,t2h,ehVal,exVal,eyVal)
+            // if time has expired or there's nothing left to update, no longer pending
+            if expired or (ehVal and (not na(t2h) or t1h == false))
+                array.push(remove,pid)
+            // if anything to update, update completed array entry and label if necessary
+            if expired
+             or (ehVal
+                 and ((not na(t1h) and na(t1Hit)) or (not na(t2h) and na(t2Hit))))
+             or (ehVal != eHit) or (ehVal and na(eHit))
+                l = updateCompleted(pid,t,tp,s)
+                if ehVal and ((ehVal != eHit) or na(eHit))
+                    draw.eHitLbl(exVal,eyVal,dX,dY,t)
+                // targets will be na if eH==false, so no need to also check eH
+                if t1h and na(t1Hit)
+                    draw.tHitLbl(t1x,t1y,exVal,eyVal,t)
+                else if t1h == false
+                    draw.sHitLbl(t1x,t1y,exVal,eyVal,t)
+                if t2h
+                    draw.tHitLbl(t2x,t2y,exVal,eyVal,t)
+                tt = ttTxt(t,tp,xX,xY,aX,aY,bX,bY,cX,cY,dX,dY,t1h,t2h,ehVal,score)
+                status = status(xX,dX,t1h,t2h,ehVal,score)
+                lbTxt = lbTxt(t,tp,score,status)
+                label.set_text(l,lbTxt)
+                label.set_tooltip(l,tt)
+            ""
+        for p in remove
+            removePending(p)
+
+updateIncompletePatterns() =>
+    string[] remove = array.new_string(0)
+    if matrix.rows(inc) > 0
+        for i=0 to matrix.rows(inc)-1
+            [t,tp,xX,xY,aX,aY,bX,bY,cX,cY,dX,dY,xadl,bcdl,xcdl,prz,eD,t1Hit,t2Hit,eHit,_,_,score]
+             = unstringify(matrix.row(inc,i))
+            [upper,lower] = t.harmonic_xabcd_przRange(xadl,bcdl,xcdl)
+            tLimit = incTLimit(xX,cX)
+            [eH,eHx,eHy] = entryHit(t,tp,xX,cX,xY,aY,bY,cY,score=score)
+            pid = pid(tp,xX,aX,bX,cX,dX)
+            if eH and e_afterC
+                addValidPattern(t,tp,xX,xY,aX,aY,bX,bY,cX,cY,eHx,eHy)
+                array.push(remove,pid)
+            // else delete incomplete pattern if timed out or no longer valid
+            else if bar_index == (cX + tLimit + 1)
+                array.push(remove,pid)
+            else if t and (high > cY or low < lower)
+                array.push(remove,pid)
+            else if t==false and (low < cY or high > upper)
+                array.push(remove,pid)
+        for p in remove
+            deleteInc(p)
+
+drawFullInProgress() =>
+    [t,tp,xX,xY,aX,aY,bX,bY,cX,cY,dX,dY,xadl,bcdl,xcdl,prz,eD,t1h,t2h,_,_,eY,score] = lastPending()
+    if not na(dX)
+        bb = last_bar_index - dX
+        tLimit = tLimit(xX,dX)
+        if bb <= tLimit and noEntry(true,score=score)==false and eTimeout(xX,dX)==false and (na(t1h) or (t1h and na(t2h)))   // draw if within time limit and target/stop not hit
+            deleteFip()                 // delete previously drawn completed pattern in progress
+            [highest,lowest] = t.harmonic_xabcd_przRange(xadl,bcdl,xcdl)
+            [t1,t2] = harmonic_xabcd_targets(tp,xY,aY,bY,cY,dY)
+            stop = t.harmonic_xabcd_stop(stopB,stopPct,t,xY,dY,highest,lowest,t1,eY)
+            [e,_,_] = entry(t,tp,xY,aY,bY,cY,dY,score)
+            entry = na(eY) ? e : eY
+            [ln,lb] = draw.xabcd_inProgress2(t,tLimit>500?500:tLimit,entry,stop,t1,t2,xadl,bcdl,xcdl,xX,xY,bX,bY,dX,dY,c_bline,c_beline,l_txt)
+            for l in ln
+                array.push(fullIpLn,l)
+            for l in lb
+                array.push(fullIpL,l)
+        else
+            deleteFip()
+
+rowValues(tp) =>
+    a1 = typeToMatrix(true,tp)
+    a2 = typeToMatrix(false,tp)
+    float[] ra = array.new_float(0)
+    t1_tot = 0
+    t2_tot = 0
+    closed = 0
+    if matrix.rows(a1) > 0
+        for i=0 to matrix.rows(a1)-1
+            [_,_,_,xY,_,aY,_,bY,_,cY,_,dY,xadl,bcdl,xcdl,_,_,t1Hit,t2Hit,eHit,_,eY,score] = unstringify(matrix.row(a1,i))
+            if not na(t1Hit) and eHit
+                [t1,t2] = harmonic_xabcd_targets(tp,xY,aY,bY,cY,dY)
+                if t1Hit==false
+                    [upper,lower] = t.harmonic_xabcd_przRange(xadl,bcdl,xcdl)
+                    stop = t.harmonic_xabcd_stop(stopB,stopPct,true,xY,dY,upper,lower,t1,eY)
+                    r = (stop/eY) - 1
+                    array.push(ra,r)
+                    closed+=1
+                else
+                    if t2Hit
+                        r = (t2/eY) - 1
+                        array.push(ra,r)
+                        t2_tot+=1
+                        t1_tot+=1
+                        closed+=1
+                    else if t1Hit
+                        r = (t1/eY) - 1
+                        array.push(ra,r)
+                        t1_tot+=1
+                        closed+=1
+    //for p in a2
+    if matrix.rows(a2) > 0
+        for i=0 to matrix.rows(a2)-1
+            [_,_,_,xY,_,aY,_,bY,_,cY,_,dY,xadl,bcdl,xcdl,_,_,t1Hit,t2Hit,eHit,_,eY,score] = unstringify(matrix.row(a2,i))
+            if not na(t1Hit) and eHit
+                [t1,t2] = harmonic_xabcd_targets(tp,xY,aY,bY,cY,dY)
+                if t1Hit==false
+                    [upper,lower] = t.harmonic_xabcd_przRange(xadl,bcdl,xcdl)
+                    stop = t.harmonic_xabcd_stop(stopB,stopPct,false,xY,dY,upper,lower,t1,eY)
+                    r = (eY/stop) - 1
+                    array.push(ra,r)
+                    closed+=1
+                else
+                    if t2Hit
+                        r = (eY/t2) - 1
+                        array.push(ra,r)
+                        t2_tot+=1
+                        t1_tot+=1
+                        closed+=1
+                    else if t1Hit
+                        r = (eY/t1) - 1
+                        array.push(ra,r)
+                        t1_tot+=1
+                        closed+=1
+    tot = matrix.rows(a1) + matrix.rows(a2)
+    array.push(pTot,tot)
+    array.push(tTot,closed)
+    if closed > 0
+        array.push(t1Tot,(t1_tot/closed)*100)
+        array.push(t2Tot,(t2_tot/closed)*100)
+    if not na(array.avg(ra))
+        array.push(arTot,array.avg(ra)*100)
+    if not na(array.sum(ra))
+        array.push(trTot,array.sum(ra)*100)
+    st1 = closed>0 ? str.tostring((t1_tot/closed)*100,"#.##")+"%" : "NA"
+    st2 = closed>0 ? str.tostring((t2_tot/closed)*100,"#.##")+"%" : "NA"
+    ravg = not na(array.avg(ra)) ? str.tostring(array.avg(ra)*100,"#.##")+"%" : "NA"
+    rtot = not na(array.sum(ra)) ? str.tostring(array.sum(ra)*100,"#.##")+"%" : "NA"
+
+    [str.tostring(tot),str.tostring(closed),st1,st2,ravg,rtot]
+
+printStats() =>
+    if i_tbl
+        nR = array.size(pTypes) + 3
+        r = 0
+        pos = switch i_tblLoc
+            "Bottom left" => position.bottom_left
+            "Middle left" => position.middle_left
+            "Top left" => position.top_left
+            "Bottom center" => position.bottom_center
+            "Middle center" => position.middle_center
+            "Top center" => position.top_center
+            "Bottom right" => position.bottom_right
+            "Middle right" => position.middle_right
+            "Top right" => position.top_right
+        t = table.new(pos, 7, nR, bgcolor = color.new(color.black,30), border_width = 1)
+        table.cell(t, 0, 0, " ", text_color=color.white, text_halign=text.align_center)
+        table.cell(t, 1, 0, "Patterns", text_color=color.white, text_halign=text.align_center,text_size=size.small)
+        table.cell(t, 2, 0, "Trades", text_color=color.white, text_halign=text.align_center,text_size=size.small)
+        table.cell(t, 3, 0, "T1 Success", text_color=color.white, text_halign=text.align_center,text_size=size.small)
+        table.cell(t, 4, 0, "T2 Success", text_color=color.white, text_halign=text.align_center,text_size=size.small)
+        table.cell(t, 5, 0, "Avg Return %", text_color=color.white, text_halign=text.align_center,text_size=size.small)
+        table.cell(t, 6, 0, "Total Return %", text_color=color.white, text_halign=text.align_center,text_size=size.small)
+        for tp in pTypes
+            r+=1
+            [tot,trd,st1,st2,ar,tr] = rowValues(tp)
+            table.cell(t, 0, r, "   "+id(tp)+"   ", text_color=color.white, text_halign=text.align_center,text_size=size.small)
+            table.cell(t, 1, r, tot, text_color=color.white, text_halign=text.align_center,text_size=size.small)
+            table.cell(t, 2, r, trd, text_color=color.white, text_halign=text.align_center,text_size=size.small)
+            table.cell(t, 3, r, st1, text_color=color.white, text_halign=text.align_center,text_size=size.small)
+            table.cell(t, 4, r, st2, text_color=color.white, text_halign=text.align_center,text_size=size.small)
+            table.cell(t, 5, r, ar, text_color=color.white, text_halign=text.align_center,text_size=size.small)
+            table.cell(t, 6, r, tr, text_color=color.white, text_halign=text.align_center,text_size=size.small)
+
+        r+=1
+        t1Total = not na(array.avg(t1Tot)) ? (str.tostring(array.avg(t1Tot),"#.##") + "%") : "NA"
+        t2Total = not na(array.avg(t2Tot)) ? (str.tostring(array.avg(t2Tot),"#.##") + "%") : "NA"
+        arTotal = not na(array.avg(arTot)) ? (str.tostring(array.avg(arTot),"#.##") + "%") : "NA"
+        trTotal = not na(array.sum(trTot)) ? (str.tostring(array.sum(trTot),"#.##") + "%") : "NA"
+        table.cell(t, 0, r, "Total", text_color=color.white, text_halign=text.align_center,text_size=size.small)
+        table.cell(t, 1, r, str.tostring(array.sum(pTot)), text_color=color.white, text_halign=text.align_center,text_size=size.small)
+        table.cell(t, 2, r, str.tostring(array.sum(tTot)), text_color=color.white, text_halign=text.align_center,text_size=size.small)
+        table.cell(t, 3, r, t1Total, text_color=color.white, text_halign=text.align_center,text_size=size.small)
+        table.cell(t, 4, r, t2Total, text_color=color.white, text_halign=text.align_center,text_size=size.small)
+        table.cell(t, 5, r, arTotal, text_color=color.white, text_halign=text.align_center,text_size=size.small)
+        table.cell(t, 6, r, trTotal, text_color=color.white, text_halign=text.align_center,text_size=size.small)
+        r+=1
+        keyTxt = "✅ = Success | ❌ = Failure | 🕝 = Timed out* | ⛔ = No entry* | ⏳ = In progress* \n*Not included in Success Rate/Return % statistics"
+        table.cell(t, 0, r, keyTxt, text_color=color.white, text_halign=text.align_right, text_size=size.small)
+        table.merge_cells(t,0,r,6,r)
+        array.clear(pTot),array.clear(tTot),array.clear(t1Tot),array.clear(t2Tot),array.clear(arTot),array.clear(trTot)
+
+find_pattern(pl,t=true) =>
+    if (t and i_bullOn) or (t==false and i_bearOn)
+        [f,xX,xY,aX,aY,bX,bY,cX,cY,dX,dY] = t.pat_xabcd(t,pl,conf_length=t_b)
+        if f
+            for p in pTypes
+                if t.pat_xabcd_validate(xX,xY,aX,aY,bX,bY,cX,cY,dX,dY,xab(p),abc(p),bcd(p),xad(p),xcd(p),pctErr,pctAsym)
+                    addValidPattern(t,p,xX,xY,aX,aY,bX,bY,cX,cY,dX,dY)
+            ""
+        [f2,xX2,xY2,aX2,aY2,bX2,bY2,cX2,cY2,dX2,dY2] = t.pat_xabcd(t,pl,conf_length=t_b,incomplete=true)
+        if f2
+            for p in pTypes
+                if t.pat_xabcd_validateIncomplete(xX2,xY2,aX2,aY2,bX2,bY2,cX2,cY2,xab(p),abc(p),pctErr,pctAsym)
+                    addIncompletePattern(t,p,xX2,xY2,aX2,aY2,bX2,bY2,cX2,cY2)
+            ""
+
+// Find XABCD patterns of various pivot lengths
+find(bull=true) =>
+    find_pattern(3,bull)
+    find_pattern(4,bull)
+    find_pattern(5,bull)
+    find_pattern(6,bull)
+    find_pattern(7,bull)
+    find_pattern(8,bull)
+    find_pattern(9,bull)
+    find_pattern(10,bull)
+    find_pattern(11,bull)
+    find_pattern(12,bull)
+    find_pattern(13,bull)
+    find_pattern(14,bull)
+    find_pattern(15,bull)
+    find_pattern(16,bull)
+    find_pattern(17,bull)
+    find_pattern(18,bull)
+    find_pattern(19,bull)
+    find_pattern(20,bull)
+
+//-----------------------------------------
+// Main
+//-----------------------------------------
+
+// update patterns in progress
+updateIncompletePatterns()   // update potential/incomplete pattern
+updatePendingPatterns()     // update any completed patterns pending results
+
+// find new patterns
+find()                      // find bullish patterns
+find(false)                 // find bearish patterns
+
+// last bar business
+if barstate.islast
+    drawFullInProgress()        // draw most recent complete pattern, if still in progress
+    printStats()                // compile stats and draw results table

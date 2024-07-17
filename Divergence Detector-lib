@@ -1,0 +1,193 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © reees
+//@version=5
+
+indicator("Divergence Detector",overlay=true,max_lines_count=500,max_labels_count=50)
+import reees/Utilities/1 as u
+
+//-----------------------------------------
+// inputs
+//-----------------------------------------
+
+var iType = input.string("RSI","Indicator", options=["RSI","OBV"], group="Indicator")
+var iLength = input.int(14,"Length", minval=1, group="Indicator")
+var bullSwitch = input.bool(true, "Show bullish", inline="dswitch", group="Divergence Params")
+var bearSwitch = input.bool(true, "Show bearish", inline="dswitch", group="Divergence Params")
+var showHidden = input.bool(true, "Show hidden", inline="dswitch", group="Divergence Params")
+var ppLength = input.int(3,"Previous pivot bars before/after",minval=1,group="Divergence Params",tooltip="Min # bars before and after a previous pivot high/low to consider it valid for divergence check")
+var cpLengthBefore = input.int(3,"Next (divergent) pivot bars before",minval=1,group="Divergence Params",tooltip="Min # leading bars before the next (divergent) pivot high/low to consider it valid for divergence check")
+var cpLengthAfter = input.int(2,"Next (divergent) pivot bars after",minval=1,group="Divergence Params",tooltip="# trailing bars after the next (divergent) pivot high/low to consider it valid for divergence check. Decreasing this value may detect divergence sooner, but with less confidence.")
+var lbBars = input.int(50,"Look back bars",minval=1,group="Divergence Params",tooltip="# of bars to look back for a previous pivot high/low. If you increase this value, you may also want to increase the pivot lengths above, or switch to a higher timeframe.")
+bullPsource = input.source(low,"Bullish divergence price source",group="Divergence Params")
+bearPsource = input.source(high,"Bearish divergence price source",group="Divergence Params")
+var noBroken = input.bool(true,"Exclude if broken trendline",group="Divergence Params",tooltip="If set, divergence is not considered valid if an intermediate pivot high/low breaks the divergence trendline (on a linear scale). If using a logarithmic scale, you may want to turn this switch off as some trendlines that are broken on a linear scale may not be broken on a log scale.")
+
+//-----------------------------------------
+// functions
+//-----------------------------------------
+
+// TODO: move to TA library
+// @function Test for bullish divergence
+div_bull(s,pivot_length=3,cp_length_before=3,cp_length_after=2,draw_label=true,lookback=50) =>
+    p = ta.pivotlow(bullPsource,pivot_length,pivot_length)
+    cpp = ta.pivotlow(bullPsource,cp_length_before,cp_length_after)
+    flag = false
+    degree = 0.0
+    type = 0
+    pWeight=.8
+    iWeight=1.2
+    hidWeight=.75
+    regWeight=1.25
+    // if price is pivoting low...
+    if not na(cpp)
+        // check last <#> bars before current pivot low for any previous pivot low
+        for i=cp_length_after to lookback+cp_length_after
+            if not na(p[i])
+                // test for divergence
+                if p[i] > bullPsource[cp_length_after] and s[i+pivot_length] < s[cp_length_after]
+                    flag := true
+                    degree := ((p[i]-bullPsource[cp_length_after])/p[i]*pWeight + (s[cp_length_after]-s[i+pivot_length])/s[cp_length_after]*iWeight)*regWeight
+                    type := 1
+                else if (p[i] < bullPsource[cp_length_after] and s[i+pivot_length] > s[cp_length_after]) and showHidden
+                    flag := true
+                    degree := ((bullPsource[cp_length_after]-p[i])/bullPsource[cp_length_after]*pWeight + (s[i+pivot_length]-s[cp_length_after])/s[i+pivot_length]*iWeight)*hidWeight
+                    type := 2
+                // if divergence exists, draw line and label
+                if flag == true
+                    lx1 = bar_index-i-pivot_length
+                    lx2 = bar_index-cp_length_after
+                    dLine = line.new(lx1,p[i],lx2,bullPsource[cp_length_after],color=color.new(color.green,30),width=1)
+                    if noBroken == true
+                        // invalidate divergence if an intermediate low breaks divergence trendline
+                        for k=lx1 to lx2
+                            if bullPsource[bar_index-k] < (line.get_price(dLine,k)*.99)
+                                flag := false
+                                degree := 0
+                                type := 0
+                                line.delete(dLine)
+                                break
+                    if flag==true and draw_label==true
+                        ltxtD = if degree > .75
+                            "Extreme"
+                        else if degree > .5
+                            "Very Strong"
+                        else if degree > .25
+                            "Strong"
+                        else if degree > .1
+                            "Moderate"
+                        else
+                            "Minimal"
+                        ltxt="Type: Bullish"+(type==2?" hidden":"")+" divergence\nDegree: "+ltxtD
+                        ltxt2=""
+                        trans=50
+                        if degree > .75
+                            ltxt2:="!!!"
+                            trans:=10
+                        else if degree > .5
+                            ltxt2:="!!"
+                            trans:=20
+                        else if degree > .25
+                            ltxt2:="!"
+                            trans:=30
+                        label.new(lx2,bullPsource[cp_length_after],tooltip=ltxt,text=ltxt2,textalign=text.align_center,style=label.style_label_up,size=size.tiny,color=color.new(color.green,trans),textcolor=color.white)
+                    break
+    [flag,degree,type]
+
+// TODO: move to TA library
+// @function Test for bearish divergence
+div_bear(s,pivot_length=3,cp_length_before=3,cp_length_after=2,draw_label=true,lookback=50) =>
+    p = ta.pivothigh(bearPsource,pivot_length,pivot_length)
+    cpp = ta.pivothigh(bearPsource,cp_length_before,cp_length_after)
+    flag = false
+    degree = 0.0
+    type = 0
+    pWeight=.8
+    iWeight=1.2
+    hidWeight=.75
+    regWeight=1.25
+    // if price is pivoting high...
+    if not na(cpp)
+        // check last <#> bars before current pivot high for any previous pivot high
+        for i=cp_length_after to lookback+cp_length_after
+            if not na(p[i])
+                // test for divergence
+                if (p[i] > bearPsource[cp_length_after] and s[i+pivot_length] < s[cp_length_after]) and showHidden
+                    flag := true
+                    degree := ((p[i]-bearPsource[cp_length_after])/p[i]*pWeight + (s[cp_length_after]-s[i+pivot_length])/s[cp_length_after]*iWeight)*hidWeight
+                    type := 2
+                else if p[i] < bearPsource[cp_length_after] and s[i+pivot_length] > s[cp_length_after]
+                    flag := true
+                    degree := ((bearPsource[cp_length_after]-p[i])/bearPsource[cp_length_after]*pWeight + (s[i+pivot_length]-s[cp_length_after])/s[i+pivot_length]*iWeight)*regWeight
+                    type := 1
+                // if divergence exists, draw line and label
+                if flag == true
+                    lx1 = bar_index-i-pivot_length
+                    lx2 = bar_index-cp_length_after
+                    dLine = line.new(lx1,p[i],lx2,bearPsource[cp_length_after],color=color.new(color.red,30),width=1)
+                    if noBroken == true
+                    // invalidate divergence if an intermediate high breaks divergence trendline
+                        for k=lx1 to lx2
+                            if bearPsource[bar_index-k] > (line.get_price(dLine,k)*1.01)
+                                flag := false
+                                degree := 0
+                                type := 0
+                                line.delete(dLine)
+                                break
+                    if flag==true and draw_label==true
+                        ltxtD = if degree > .75
+                            "Extreme"
+                        else if degree > .5
+                            "Very Strong"
+                        else if degree > .25
+                            "Strong"
+                        else if degree > .1
+                            "Moderate"
+                        else
+                            "Minimal"
+                        ltxt="Type: Bearish"+(type==2?" hidden":"")+" divergence\nDegree: "+ltxtD
+                        ltxt2=""
+                        trans=50
+                        if degree > .75
+                            ltxt2:="!!!"
+                            trans:=10
+                        else if degree > .5
+                            ltxt2:="!!"
+                            trans:=20
+                        else if degree > .25
+                            ltxt2:="!"
+                            trans:=30
+                        label.new(lx2,bearPsource[cp_length_after],tooltip=ltxt,text=ltxt2,textalign=text.align_center,style=label.style_label_down,size=size.tiny,color=color.new(color.red,trans),textcolor=color.white)
+                    break
+    [flag,degree,type]
+
+//-----------------------------------------
+// data/vars
+//-----------------------------------------
+
+// TODO: Add support for MACD, etc
+i_bear = if iType=="OBV"
+    ta.obv
+// MACD coming soon...
+// else if iType=="MACD"
+//     [_,_,m]=ta.macd(bearPsource,12,26,9)
+//     m
+else
+    ta.rsi(bearPsource, iLength)
+
+i_bull = if iType=="OBV"
+    ta.obv
+// MACD coming soon...
+// else if iType=="MACD"
+//     [_,_,m]=ta.macd(bearPsource,12,26,9)
+//     m
+else
+    ta.rsi(bullPsource, iLength)
+
+//-----------------------------------------
+// test for divergence
+//-----------------------------------------
+
+if bearSwitch==true
+    div_bear(i_bear,ppLength,cpLengthBefore,cpLengthAfter,lookback=lbBars)
+if bullSwitch==true
+    div_bull(i_bull,ppLength,cpLengthBefore,cpLengthAfter,lookback=lbBars)

@@ -1,0 +1,204 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © reees
+//@version=5
+
+indicator("Divergence Strength Oscillator","DivStrOsc",max_bars_back=500)
+
+import reees/TA/69 as t
+import reees/Utilities/4 as u
+
+//-----------------------------------------
+// inputs
+//-----------------------------------------
+
+var ppLength = input.int(4,"Previous pivot bars before/after",minval=1,group="Divergence Params",tooltip="Min # bars before and after a previous pivot high/low to consider it valid for divergence check")
+var cpLengthBefore = input.int(4,"Next (divergent) pivot bars before",minval=1,group="Divergence Params",tooltip="Min # leading bars before the next (divergent) pivot high/low to consider it valid for divergence check")
+var cpLengthAfter=0
+var lbBars = input.int(50,"Lookback bars",minval=1,maxval=100,group="Divergence Params",inline="lb")
+var lbPivs = input.int(2,"Lookback pivots",minval=1,group="Divergence Params",inline="lb",tooltip="# of bars or # of pivot highs/lows to look back across, whichever comes first")
+var w_reg = input.float(1.0,"Regular divergence weight",step=.1,minval=0.0,group="Divergence Params",inline="degreg")
+var w_hid = input.float(1.0,"Hidden divergence weight",step=.1,minval=0.0,group="Divergence Params",inline="degreg",tooltip="Value/weight of regular divergence versus hidden divergence (applies to all indicators)")
+var w_p = input.float(0.5,"Δ price weight",step=.1,minval=0.0,group="Divergence Params",inline="degprice")
+var w_i = input.float(1.5,"Δ indicator weight",step=.1,minval=0.0,group="Divergence Params",inline="degprice",tooltip="Value/weight of change in price versus change in indicator value (applies to all indicators)")
+bullPsource = input.source(low,"Bullish divergence price source",group="Divergence Params",tooltip="Used for indicators only when appropriate. If the selected source is not technically feasible or otherwise offends the spirit of an indicator, the indicator's natural source will be used instead.")
+bearPsource = input.source(high,"Bearish divergence price source",group="Divergence Params",tooltip="Used for indicators only when appropriate. If the selected source is not technically feasible or otherwise offends the spirit of an indicator, the indicator's natural source will be used instead.")
+//
+var iRsi = input.bool(true,"RSI", group="Indicator", inline="ind_rsi")
+var w_rsi = input.float(1.1,"Weight",step=.1,minval=0.0,group="Indicator",inline="ind_rsi",tooltip="Relative Strength Index (RSI)\n\nWeight: Weight of RSI divergence in total divergence strength calculation.")
+var iObv = input.bool(true,"OBV", group="Indicator", inline="ind_obv")
+var w_obv = input.float(0.8,"Weight",step=.1,minval=0.0,group="Indicator",inline="ind_obv",tooltip="On Balance Volume (OBV)\n\nWeight: Weight of OBV divergence in total divergence strength calculation.")
+var iMacd = input.bool(true,"MACD", group="Indicator", inline="ind_macd")
+var w_macd = input.float(.9,"Weight",step=.1,minval=0.0,group="Indicator",inline="ind_macd",tooltip="Moving Average Convergence/Divergence (MACD)\n\nWeight: Weight of MACD divergence in total divergence strength calculation.")
+var iStoch = input.bool(true,"STOCH", group="Indicator", inline="ind_stoch")
+var w_stoch = input.float(0.9,"Weight",step=.1,minval=0.0,group="Indicator",inline="ind_stoch",tooltip="Stochastic (STOCH)\n\nWeight: Weight of STOCH divergence in total divergence strength calculation.")
+var iCci = input.bool(true,"CCI", group="Indicator", inline="ind_cci")
+var w_cci = input.float(1.0,"Weight",step=.1,minval=0.0,group="Indicator",inline="ind_cci",tooltip="Commodity Channel Index (CCI)\n\nWeight: Weight of CCI divergence in total divergence strength calculation.")
+var iMfi = input.bool(true,"MFI", group="Indicator", inline="ind_mfi")
+var w_mfi = input.float(1.0,"Weight",step=.1,minval=0.0,group="Indicator",inline="ind_mfi",tooltip="Money Flow Index (MFI)\n\nWeight: Weight of MFI divergence in total divergence strength calculation.")
+var iAo = input.bool(true,"AO", group="Indicator", inline="ind_ao")
+var w_ao = input.float(1.0,"Weight",step=.1,minval=0.0,group="Indicator",inline="ind_ao",tooltip="Awesome Oscillator (AO)\n\nWeight: Weight of AO divergence in total divergence strength calculation.")
+// var a_on = input.bool(true, "Alert", inline="alert", group="Alerts")
+// var a_above = input.float(5.0, "for values above", step=.1, inline="alert", group="Alerts")
+var bearSwitch = true
+var bullSwitch = true
+var netDiv = 0.0
+var max = 7.0
+var min = -7.0
+
+//-----------------------------------------
+// Main
+//-----------------------------------------
+
+bearTotalDeg = 0.0      // total degree of divergence across all indicators
+bullTotalDeg = 0.0
+
+// RSI
+if iRsi
+    if bearSwitch
+        i_bear = ta.rsi(bearPsource, 14)
+        [f,d,_,_,_,_,_] = t.div_bear(bearPsource,i_bear,cpLengthAfter,cpLengthBefore,ppLength,lbBars,lbPivs,true,w_p,w_i,w_hid,w_reg)
+        d := d*w_rsi
+        if f
+            bearTotalDeg += d
+    if bullSwitch
+        i_bull = ta.rsi(bullPsource, 14)
+        [f,d,_,_,_,_,_] = t.div_bull(bullPsource,i_bull,cpLengthAfter,cpLengthBefore,ppLength,lbBars,lbPivs,true,w_p,w_i,w_hid,w_reg)
+        d := d*w_rsi
+        if f
+            bullTotalDeg += d
+// OBV
+if iObv
+    if bearSwitch
+        i_bear = ta.obv
+        [f,d,_,_,_,_,_] = t.div_bear(bearPsource,i_bear,cpLengthAfter,cpLengthBefore,ppLength,lbBars,lbPivs,true,w_p,w_i,w_hid,w_reg)
+        d := d*w_obv
+        if f
+            bearTotalDeg += d
+    if bullSwitch
+        i_bull = ta.obv
+        [f,d,_,_,_,_,_] = t.div_bull(bullPsource,i_bull,cpLengthAfter,cpLengthBefore,ppLength,lbBars,lbPivs,true,w_p,w_i,w_hid,w_reg)
+        d := d*w_obv
+        if f
+            bullTotalDeg += d
+// MACD
+if iMacd
+    if bearSwitch
+        [_,_,i_bear] = ta.macd(bearPsource,12,26,9)
+        [f,d,_,_,_,_,_] = t.div_bear(bearPsource,i_bear,cpLengthAfter,cpLengthBefore,ppLength,lbBars,lbPivs,true,w_p,w_i,w_hid,w_reg)
+        d := d*w_macd
+        if f
+            bearTotalDeg += d
+    if bullSwitch
+        [_,_,i_bull] = ta.macd(bullPsource,12,26,9)
+        [f,d,_,_,_,_,_] = t.div_bull(bullPsource,i_bull,cpLengthAfter,cpLengthBefore,ppLength,lbBars,lbPivs,true,w_p,w_i,w_hid,w_reg)
+        d := d*w_macd
+        if f
+            bullTotalDeg += d
+// STOCH
+if iStoch
+    if bearSwitch
+        i_bear = ta.stoch(close, high, low, 14)
+        [f,d,_,_,_,_,_] = t.div_bear(bearPsource,i_bear,cpLengthAfter,cpLengthBefore,ppLength,lbBars,lbPivs,true,w_p,w_i,w_hid,w_reg)
+        d := d*w_stoch
+        if f
+            bearTotalDeg += d
+    if bullSwitch
+        i_bull = ta.stoch(close, high, low, 14)
+        [f,d,_,_,_,_,_] = t.div_bull(bullPsource,i_bull,cpLengthAfter,cpLengthBefore,ppLength,lbBars,lbPivs,true,w_p,w_i,w_hid,w_reg)
+        d := d*w_stoch
+        if f
+            bullTotalDeg += d
+// CCI
+if iCci
+    if bearSwitch
+        i_bear = ta.cci(bearPsource,20)
+        [f,d,_,_,_,_,_] = t.div_bear(bearPsource,i_bear,cpLengthAfter,cpLengthBefore,ppLength,lbBars,lbPivs,true,w_p,w_i,w_hid,w_reg)
+        d := d*w_cci
+        if f
+            bearTotalDeg += d
+    if bullSwitch
+        i_bull = ta.cci(bullPsource,20)
+        [f,d,_,_,_,_,_] = t.div_bull(bullPsource,i_bull,cpLengthAfter,cpLengthBefore,ppLength,lbBars,lbPivs,true,w_p,w_i,w_hid,w_reg)
+        d := d*w_cci
+        if f
+            bullTotalDeg += d
+// MFI
+if iMfi
+    if bearSwitch
+        i_bear = ta.mfi(bearPsource,14)
+        [f,d,_,_,_,_,_] = t.div_bear(bearPsource,i_bear,cpLengthAfter,cpLengthBefore,ppLength,lbBars,lbPivs,true,w_p,w_i,w_hid,w_reg)
+        d := d*w_mfi
+        if f
+            bearTotalDeg += d
+    if bullSwitch
+        i_bull = ta.mfi(bullPsource,14)
+        [f,d,_,_,_,_,_] = t.div_bull(bullPsource,i_bull,cpLengthAfter,cpLengthBefore,ppLength,lbBars,lbPivs,true,w_p,w_i,w_hid,w_reg)
+        d := d*w_mfi
+        if f
+            bullTotalDeg += d
+// AO
+if iAo
+    if bearSwitch
+        i_bear = ta.sma(hl2,5) - ta.sma(hl2,34)
+        [f,d,_,_,_,_,_] = t.div_bear(bearPsource,i_bear,cpLengthAfter,cpLengthBefore,ppLength,lbBars,lbPivs,true,w_p,w_i,w_hid,w_reg)
+        d := d*w_ao
+        if f
+            bearTotalDeg += d
+    if bullSwitch
+        i_bull = ta.sma(hl2,5) - ta.sma(hl2,34)
+        [f,d,_,_,_,_,_] = t.div_bull(bullPsource,i_bull,cpLengthAfter,cpLengthBefore,ppLength,lbBars,lbPivs,true,w_p,w_i,w_hid,w_reg)
+        d := d*w_ao
+        if f
+            bullTotalDeg += d
+
+netDiv :=
+ if bullTotalDeg > bearTotalDeg         // IF stronger bull divergence forming
+    if netDiv >= 0 or na(netDiv)            // IF current net divergence is already bullish
+        bullTotalDeg                            // use latest bullish divergence strength value
+    else                                     // ELSE
+        netDiv + bullTotalDeg                   // add bullish divergence strength value to current (bearish) net divergence
+else if bearTotalDeg > bullTotalDeg     // ELSE IF stronger bear divergence forming
+    if netDiv <= 0 or na(netDiv)            // IF current net divergence is already bearish
+        0 - bearTotalDeg                        // use latest negative bearish divergence strength value
+    else                                    // ELSE
+        netDiv - bearTotalDeg                   // subtract bearish divergence strength value from current (bullish) net divergence
+else
+    //netDiv
+    na
+
+//netDiv := netDiv + bullTotalDeg- bearTotalDeg
+
+
+// color / gradient vars
+if netDiv > max
+    max := netDiv
+if netDiv < min
+    min := netDiv
+
+clr =
+ if netDiv == 0
+    color.gray
+else if netDiv > 0
+    color.green
+else
+    color.red
+
+fillClr =
+ if netDiv == 0
+    color.gray
+else if netDiv > 0
+    color.lime
+else
+    color.red
+
+// Plot
+
+hline(4,"Bullish signal line")
+hline(-4,"Bearish signal line")
+zero = plot(0.0,"Zero line",color.new(color.gray,50))
+valPlot = plot(netDiv,"Divergence strength",color.new(clr,50),style=plot.style_histogram)
+topVal = netDiv > 0 ? max : 0.0
+botVal = netDiv > 0 ? 0.0 : min
+topClr = netDiv > 0 ? color.new(color.lime,0) : color.new(color.red,100)
+botClr = netDiv > 0 ? color.new(color.lime,100) : color.new(color.red,0)
+fill(zero,valPlot,topVal,botVal,topClr,botClr)

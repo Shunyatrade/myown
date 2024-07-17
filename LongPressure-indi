@@ -1,0 +1,64 @@
+// @version=4
+// © reees
+//
+study(title="LongPressure",overlay=true)
+level1 = input(0.0,type=input.float,minval=0,title="Liquidation Support Level",tooltip="Choose a strong support level, i.e. a level below which a margin trader is likely to want his/her liquidation level")
+transp1 = input(50,type=input.integer,minval=0,maxval=100,title="Transparency",inline="top")
+offsetInp = input(50,type=input.integer,minval=0,title="Offset",tooltip="Number of bars to extend pressure levels into the future",inline="top")
+if level1==0
+    bgColor=color.new(color.black,40)
+    msg1="To see margin pressure levels, you need to enter a base support level first.\n(Settings > Liquidation Support Level)"
+    msg2="TIPS:"
+    msg3="\n[1] Choose a strong support level, i.e. a level below which a margin trader is likely to want his/her liquidation level."
+    msg4="\n[2] Zoom out! Higher time frames will help identify stronger support levels."
+    msg5="\n[3] If there are multiple strong support levels, use multiple instances of the indicator to identify key zones where pressure levels align."
+    msg6="\n[4] Use in conjunction with the Margin Selling Pressure Levels indicator to identify key zones where pressure levels align."
+    tips=msg2+msg3+msg4+msg5+msg6
+    var msgTable = table.new(position = position.bottom_center, columns = 1, rows = 2, bgcolor = bgColor, border_width = 1)
+    table.cell(table_id = msgTable, text_color=color.white,column = 0, row = 0, text = msg1)
+    table.cell(table_id = msgTable, text_halign=text.align_left,text_color=color.white, column = 0, row = 1, text = tips)
+offset = level1==0 ? 0 : offsetInp
+show2x = input(title="2x", type=input.bool, defval=true, inline="2x")
+show3x = input(title="3x", type=input.bool, defval=true, inline="3x")
+show4x = input(title="4x", type=input.bool, defval=true, inline="4x")
+show5x = input(title="5x", type=input.bool, defval=true, inline="5x")
+show7x = input(title="7x", type=input.bool, defval=false, inline="7x")
+show10x = input(title="10x", type=input.bool, defval=false, inline="10x")
+color1 = color.new(color.white,transp1)
+inpColor1_2 = input(color.blue,type=input.color,inline="2x",title="")
+color1_2 = color.new(inpColor1_2,transp1)
+inpColor1_3 = input(color.green,type=input.color,inline="3x",title="")
+color1_3 = color.new(inpColor1_3,transp1)
+inpColor1_4 = input(color.yellow,type=input.color,inline="4x",title="")
+color1_4 = color.new(inpColor1_4,transp1)
+inpColor1_5 = input(color.orange,type=input.color,inline="5x",title="")
+color1_5 = color.new(inpColor1_5,transp1)
+inpColor1_7 = input(color.fuchsia,type=input.color,inline="7x",title="")
+color1_7 = color.new(inpColor1_7,transp1)
+inpColor1_10 = input(color.red,type=input.color,inline="10x",title="")
+color1_10 = color.new(inpColor1_10,transp1)
+plot2x = (level1!=0 and show2x)
+plot3x = (level1!=0 and show3x)
+plot4x = (level1!=0 and show4x)
+plot5x = (level1!=0 and show5x)
+plot7x = (level1!=0 and show7x)
+plot10x = (level1!=0 and show10x)
+plot(level1==0 ? na : level1,color=color1,linewidth=2,title="Support Level")
+// 2x
+lvl1_2=2*level1
+plot(plot2x ? lvl1_2 : na,color=color1_2,offset=offset,title="2x Long Pressure",linewidth=2)
+// 3x
+lvl1_3=1.5*level1
+plot(plot3x ? lvl1_3 : na,color=color1_3,offset=offset,title="3x Long Pressure",linewidth=2)
+// 4x
+lvl1_4=1.33333333333*level1
+plot(plot4x ? lvl1_4 : na,color=color1_4,offset=offset,title="4x Long Pressure",linewidth=2)
+// 5x
+lvl1_5=1.25*level1
+plot(plot5x ? lvl1_5 : na,color=color1_5,offset=offset,title="5x Long Pressure",linewidth=2)
+// 7x
+lvl1_7=1.1666666666667*level1
+plot(plot7x ? lvl1_7 : na,color=color1_7,offset=offset,title="7x Long Pressure",linewidth=2)
+// 10x
+lvl1_10=1.111111111111111*level1
+plot(plot10x ? lvl1_10 : na,color=color1_10,offset=offset,title="10x Long Pressure",linewidth=2)

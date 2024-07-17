@@ -1,0 +1,125 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © reees
+
+//@version=5
+indicator("Margin Pressure Thresholds","MarginPressure",true,max_bars_back=500)
+
+import reees/Draw/28 as draw
+
+//-----------------------------------------
+// inputs and globals
+//-----------------------------------------
+
+var i_lvl_l = input.float(0.0, "Long Liquidation Support Level", minval=0, group="Manual Level Entry",
+                          tooltip="Choose a strong support level, i.e. a level below which a margin trader is likely to want his/her liquidation level")
+var i_lvl_s = input.float(0.0, "Short Liquidation Resistance Level", minval=0, group="Manual Level Entry",
+                          tooltip="Choose a strong resistance level, i.e. a level above which a margin trader is likely to want his/her liquidation level")
+
+var i_l = input.int(100,"Level length",minval=0,maxval=250,inline="length",group="Display")
+var i_lExt = input.bool(false,"Extend right",inline="length",group="Display")
+var i_2x = input.bool(true, "2x", inline="2x",group="Display")
+var i_3x = input.bool(true, "3x", inline="3x",group="Display")
+var i_4x = input.bool(true, "4x", inline="4x",group="Display")
+var i_5x = input.bool(true, "5x", inline="5x",group="Display")
+var i_7x = input.bool(false, "7x", inline="7x",group="Display")
+var i_10x = input.bool(false, "10x", inline="10x",group="Display")
+var i_nx = input.bool(false, "", inline="nx",group="Display")
+var i_n = input.int(15, "", minval=2,maxval=250, inline="nx",group="Display")
+var i_2xC = input.color(color.blue, "", inline="2x",group="Display")
+var i_3xC = input.color(color.green, "", inline="3x",group="Display")
+var i_4xC = input.color(color.yellow, "", inline="4x",group="Display")
+var i_5xC = input.color(color.orange, "", inline="5x",group="Display")
+var i_7xC = input.color(color.fuchsia, "", inline="7x",group="Display")
+var i_10xC = input.color(color.red, "", inline="10x",group="Display")
+var i_nxC = input.color(color.teal, "", inline="nx",group="Display")
+var i_txtSize = input.string("small","Text size",["tiny","small","normal","large"],group="Display")
+var i_pad = input.float(1.0,"Level % padding",step=.1,group="Display",tooltip="Vertical padding to be added above and below the level, as a percentage of the level.")
+
+var tt = "Click to select a support or resistance level. You can edit this level in Settings."
+var i_y = input.price(0.0, "Clicked: ", confirm=true, inline="int", group="Interactive Level Entry")
+var i_x = input.time(0, "", confirm=true, inline="int", group="Interactive Level Entry", tooltip=tt)
+
+ind = i_x == time ? bar_index : -1
+
+var lvlL =
+ if i_lvl_l > 0
+    i_lvl_l
+else if i_y > 0 and bar_index==ind
+    open[bar_index-ind] > i_y ? i_y : 0.0
+var lvlS =
+ if i_lvl_s > 0
+    i_lvl_s
+else if i_y > 0 and bar_index==ind
+    open[bar_index-ind] < i_y ? i_y : 0.0
+
+//-----------------------------------------
+// functions
+//-----------------------------------------
+
+shortMulti(float n) =>
+    (n-1)/n
+
+longMulti(float n) =>
+    n/(n-1)
+
+drawShort() =>
+    ext = i_lExt ? extend.right : extend.none
+    txtSize = draw.size(i_txtSize)
+    draw.level(lvlS,ind-i_l,0,i_l*2,extend=ext,txt=(str.tostring(lvlS,"#.#####") + " (short liquidation resistance)"), txt_loc="right", padding=i_pad, txt_size=txtSize)
+    if i_2x
+        l = lvlS*shortMulti(2)
+        draw.level(l, ind, length=i_l, colr=i_2xC, txt=(str.tostring(l,"#.#####") + " (2x short threshold)"), txt_loc="right", extend=ext, padding=i_pad, txt_size=txtSize)
+    if i_3x
+        l = lvlS*shortMulti(3)
+        draw.level(l, ind, length=i_l, colr=i_3xC, txt=(str.tostring(l,"#.#####") + " (3x short threshold)"), txt_loc="right", extend=ext, padding=i_pad, txt_size=txtSize)
+    if i_4x
+        l = lvlS*shortMulti(4)
+        draw.level(l, ind, length=i_l, colr=i_4xC, txt=(str.tostring(l,"#.#####") + " (4x short threshold)"), txt_loc="right", extend=ext, padding=i_pad, txt_size=txtSize)
+    if i_5x
+        l = lvlS*shortMulti(5)
+        draw.level(l, ind, length=i_l, colr=i_5xC, txt=(str.tostring(l,"#.#####") + " (5x short threshold)"), txt_loc="right", extend=ext, padding=i_pad, txt_size=txtSize)
+    if i_7x
+        l = lvlS*shortMulti(7)
+        draw.level(l, ind, length=i_l, colr=i_7xC, txt=(str.tostring(l,"#.#####") + " (7x short threshold)"), txt_loc="right", extend=ext, padding=i_pad, txt_size=txtSize)
+    if i_10x
+        l = lvlS*shortMulti(10)
+        draw.level(l, ind, length=i_l, colr=i_10xC, txt=(str.tostring(l,"#.#####") + " (10x short threshold)"), txt_loc="right", extend=ext, padding=i_pad, txt_size=txtSize)
+    if i_nx
+        l = lvlS*shortMulti(i_n)
+        draw.level(l, ind, length=i_l, colr=i_nxC, txt=(str.tostring(l,"#.#####") + " (" + str.tostring(i_n) + "x short threshold)"), txt_loc="right", extend=ext, padding=i_pad, txt_size=txtSize)
+
+drawLong() =>
+    ext = i_lExt ? extend.right : extend.none
+    txtSize = draw.size(i_txtSize)
+    draw.level(lvlL,ind-i_l,0,i_l*2,extend=ext,txt=(str.tostring(lvlL,"#.#####") + " (long liquidation support)"), txt_loc="right", padding=i_pad, txt_size=txtSize)
+    if i_2x
+        l = lvlL*longMulti(2)
+        draw.level(l, ind, length=i_l, colr=i_2xC, txt=(str.tostring(l,"#.#####") + " (2x long threshold)"), txt_loc="right", extend=ext, padding=i_pad, txt_size=txtSize)
+    if i_3x
+        l = lvlL*longMulti(3)
+        draw.level(l, ind, length=i_l, colr=i_3xC, txt=(str.tostring(l,"#.#####") + " (3x long threshold)"), txt_loc="right", extend=ext, padding=i_pad, txt_size=txtSize)
+    if i_4x
+        l = lvlL*longMulti(4)
+        draw.level(l, ind, length=i_l, colr=i_4xC, txt=(str.tostring(l,"#.#####") + " (4x long threshold)"), txt_loc="right", extend=ext, padding=i_pad, txt_size=txtSize)
+    if i_5x
+        l = lvlL*longMulti(5)
+        draw.level(l, ind, length=i_l, colr=i_5xC, txt=(str.tostring(l,"#.#####") + " (5x long threshold)"), txt_loc="right", extend=ext, padding=i_pad, txt_size=txtSize)
+    if i_7x
+        l = lvlL*longMulti(7)
+        draw.level(l, ind, length=i_l, colr=i_7xC, txt=(str.tostring(l,"#.#####") + " (7x long threshold)"), txt_loc="right", extend=ext, padding=i_pad, txt_size=txtSize)
+    if i_10x
+        l = lvlL*longMulti(10)
+        draw.level(l, ind, length=i_l, colr=i_10xC, txt=(str.tostring(l,"#.#####") + " (10x long threshold)"), txt_loc="right", extend=ext, padding=i_pad, txt_size=txtSize)
+    if i_nx
+        l = lvlL*longMulti(i_n)
+        draw.level(l, ind, length=i_l, colr=i_nxC, txt=(str.tostring(l,"#.#####") + " (" + str.tostring(i_n) + "x long threshold)"), txt_loc="right", extend=ext, padding=i_pad, txt_size=txtSize)
+
+//-----------------------------------------
+// main
+//-----------------------------------------
+
+if ind > -1  // on evaluation of clicked location bar
+    if lvlS > 0
+        drawShort()
+    if lvlL > 0
+        drawLong()
